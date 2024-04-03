@@ -1,4 +1,4 @@
-#include "vcv_ports/glue/Befaco/Befaco_res_SpringReverbIR_f32.h"
+#include "Befaco_res_SpringReverbIR_f32.h"
 
 #include "plugin.hpp"
 #include <pffft.h>
