@@ -317,7 +317,7 @@ struct NoisePlethora : Module {
 		programSelectorWithCV.getSection(SECTION).setBank(bank);
 		programSelectorWithCV.getSection(SECTION).setProgram(programWithCV);
 
-		const std::string newAlgorithmName = programSelectorWithCV.getSection(SECTION).getCurrentProgramName();
+		std::string_view newAlgorithmName = programSelectorWithCV.getSection(SECTION).getCurrentProgramName();
 
 		// this is just a caching check to avoid constantly re-initialisating the algorithms
 		if (newAlgorithmName != algorithmName[SECTION]) {
@@ -329,7 +329,7 @@ struct NoisePlethora : Module {
 				algorithm[SECTION]->init();
 			}
 			else {
-				DEBUG("WARNING: Failed to initialise %s in programSelector", newAlgorithmName.c_str());
+				DEBUG("WARNING: Failed to initialise %s in programSelector", newAlgorithmName.data());
 			}
 		}
 	}
@@ -536,7 +536,7 @@ struct NoisePlethora : Module {
 	void setAlgorithmViaProgram(int newProgram) {
 
 		const int currentBank = programSelector.getCurrent().getBank();
-		const std::string algorithmName = getBankForIndex(currentBank).getProgramName(newProgram);
+		std::string_view algorithmName = getBankForIndex(currentBank).getProgramName(newProgram);
 		const int section = programSelector.getMode();
 
 		setAlgorithm(section, algorithmName);
@@ -547,13 +547,13 @@ struct NoisePlethora : Module {
 		const int currentProgram = programSelector.getCurrent().getProgram();
 		// the new bank may not have as many algorithms
 		const int currentProgramInNewBank = clamp(currentProgram, 0, getBankForIndex(newBank).getSize() - 1);
-		const std::string algorithmName = getBankForIndex(newBank).getProgramName(currentProgramInNewBank);
+		const std::string_view algorithmName = getBankForIndex(newBank).getProgramName(currentProgramInNewBank);
 		const int section = programSelector.getMode();
 
 		setAlgorithm(section, algorithmName);
 	}
 
-	void setAlgorithm(int section, std::string algorithmName) {
+	void setAlgorithm(int section, std::string_view algorithmName) {
 
 		if (section > 1) {
 			return;
@@ -571,7 +571,7 @@ struct NoisePlethora : Module {
 			}
 		}
 
-		DEBUG("WARNING: Didn't find %s in programSelector", algorithmName.c_str());
+		DEBUG("WARNING: Didn't find %s in programSelector", algorithmName.data());
 	}
 
 	void dataFromJson(json_t* rootJ) override {
@@ -599,8 +599,8 @@ struct NoisePlethora : Module {
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 
-		json_object_set_new(rootJ, "algorithmA", json_string(programSelector.getA().getCurrentProgramName().c_str()));
-		json_object_set_new(rootJ, "algorithmB", json_string(programSelector.getB().getCurrentProgramName().c_str()));
+		json_object_set_new(rootJ, "algorithmA", json_string(programSelector.getA().getCurrentProgramName().data()));
+		json_object_set_new(rootJ, "algorithmB", json_string(programSelector.getB().getCurrentProgramName().data()));
 
 		json_object_set_new(rootJ, "bypassFilters", json_boolean(bypassFilters));
 		json_object_set_new(rootJ, "blockDC", json_boolean(blockDC));
@@ -698,7 +698,7 @@ struct NoisePlethoraLEDDisplay : LightWidget {
 	}
 
 	void setTooltip() {
-		std::string activeName = module->programSelector.getSection(section).getCurrentProgramName();
+		std::string_view activeName = module->programSelector.getSection(section).getCurrentProgramName();
 		tooltip = new ui::Tooltip;
 		tooltip->text = activeName;
 		APP->scene->addChild(tooltip);
@@ -913,7 +913,7 @@ struct NoisePlethoraWidget : ModuleWidget {
 					menu->addChild(createSubmenuItem(string::f("Bank %d: %s", i + 1, bankAliases[i].c_str()), currentBank == i ? CHECKMARK_STRING : "", [ = ](Menu * menu) {
 						for (int j = 0; j < getBankForIndex(i).getSize(); ++j) {
 							const bool currentProgramAndBank = (currentProgram == j) && (currentBank == i);
-							const std::string algorithmName = getBankForIndex(i).getProgramName(j);
+							std::string_view algorithmName = getBankForIndex(i).getProgramName(j);
 
 							bool implemented = false;
 							for (auto item : MyFactory::Instance()->factoryFunctionRegistry) {
