@@ -167,8 +167,10 @@ struct NoisePlethora : Module {
 
 	// section A/B
 	bool bypassFilters = false;
-	std::shared_ptr<NoisePlethoraPlugin> algorithm[2]; 		// pointer to actual algorithm
-	std::string algorithmName[2];							// variable to cache which algorithm is active (after program CV applied)
+	std::shared_ptr<NoisePlethoraPlugin> algorithm[2]{nullptr, nullptr}; 	// pointer to actual algorithm
+	std::string_view algorithmName[2]{"", ""};				// variable to cache which algorithm is active (after program CV applied)
+	std::map<std::string_view, std::shared_ptr<NoisePlethoraPlugin>> A_algorithms{};
+	std::map<std::string_view, std::shared_ptr<NoisePlethoraPlugin>> B_algorithms{};
 
 	// filters for A/B
 	StateVariableFilter2ndOrder svfFilter[2];
@@ -243,6 +245,11 @@ struct NoisePlethora : Module {
 		getInputInfo(PROG_A_INPUT)->description = "CV sums with active program (0.5V increments)";
 		getInputInfo(PROG_B_INPUT)->description = "CV sums with active program (0.5V increments)";
 
+		for (auto const &entry : MyFactory::Instance()->factoryFunctionRegistry) {
+			A_algorithms[entry.first] = MyFactory::Instance()->Create(entry.first);
+			B_algorithms[entry.first] = MyFactory::Instance()->Create(entry.first);
+		}
+
 		setAlgorithm(SECTION_B, "radioOhNo");
 		setAlgorithm(SECTION_A, "radioOhNo");
 		onSampleRateChange();
@@ -315,7 +322,7 @@ struct NoisePlethora : Module {
 		// this is just a caching check to avoid constantly re-initialisating the algorithms
 		if (newAlgorithmName != algorithmName[SECTION]) {
 
-			algorithm[SECTION] = MyFactory::Instance()->Create(newAlgorithmName);
+			algorithm[SECTION] = SECTION == Section::SECTION_A ? A_algorithms[newAlgorithmName] : B_algorithms[newAlgorithmName];
 			algorithmName[SECTION] = newAlgorithmName;
 
 			if (algorithm[SECTION]) {
