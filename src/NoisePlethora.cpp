@@ -924,14 +924,14 @@ struct NoisePlethoraWidget : ModuleWidget {
 							}
 
 							if (implemented) {
-								menu->addChild(createMenuItem(algorithmName, currentProgramAndBank ? CHECKMARK_STRING : "",
+								menu->addChild(createMenuItem(std::string{algorithmName}, currentProgramAndBank ? CHECKMARK_STRING : "",
 								[ = ]() {
 									module->setAlgorithm(sectionId, algorithmName);
 								}));
 							}
 							else {
 								// placeholder text (greyed out)
-								menu->addChild(createMenuLabel(algorithmName));
+								menu->addChild(createMenuLabel(std::string{algorithmName}));
 							}
 						}
 					}));
