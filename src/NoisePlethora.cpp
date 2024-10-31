@@ -908,10 +908,11 @@ struct NoisePlethoraWidget : ModuleWidget {
 			[ = ](Menu * menu) {
 				for (int i = 0; i < numBanks; i++) {
 					const int currentBank = module->programSelector.getSection(sectionId).getBank();
-					const int currentProgram = module->programSelector.getSection(sectionId).getProgram();
 
 					menu->addChild(createSubmenuItem(string::f("Bank %d: %s", i + 1, bankAliases[i].c_str()), currentBank == i ? CHECKMARK_STRING : "", [ = ](Menu * menu) {
 						for (int j = 0; j < getBankForIndex(i).getSize(); ++j) {
+							const int currentBank = module->programSelector.getSection(sectionId).getBank();
+							const int currentProgram = module->programSelector.getSection(sectionId).getProgram();
 							const bool currentProgramAndBank = (currentProgram == j) && (currentBank == i);
 							std::string_view algorithmName = getBankForIndex(i).getProgramName(j);
 
