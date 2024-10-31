@@ -253,6 +253,10 @@ struct NoisePlethora : Module {
 		setAlgorithm(SECTION_B, "radioOhNo");
 		setAlgorithm(SECTION_A, "radioOhNo");
 		onSampleRateChange();
+
+#ifdef METAMODULE
+		programButtonDragged = true;
+#endif
 	}
 
 	void onReset(const ResetEvent& e) override {
@@ -453,22 +457,23 @@ struct NoisePlethora : Module {
 
 		// program knob will either change program for current bank...
 		{
+			// work out the change (in discrete increments) since the program/bank knob started being dragged
+			const int delta = (int)(dialResolution * (params[PROGRAM_PARAM].getValue() - programKnobReferenceState));
 
 			if (programKnobMode == PROGRAM_MODE) {
 				const int numProgramsForCurrentBank = getBankForIndex(programSelector.getCurrent().getBank()).getSize();
-				const int currentProgram = programSelector.getCurrent().getProgram();
-				const int newProgramFromKnob = (int) std::round((numProgramsForCurrentBank - 1) * params[PROGRAM_PARAM].getValue());
 
-				if (newProgramFromKnob != currentProgram) {
+				if (delta != 0) {
+					const int newProgramFromKnob = (int) std::round((numProgramsForCurrentBank - 1) * params[PROGRAM_PARAM].getValue());
+					programKnobReferenceState = params[PROGRAM_PARAM].getValue();
 					setAlgorithmViaProgram(newProgramFromKnob);
 				}
 			}
 			// ...or change bank, (trying to) keep program the same
 			else {
-				const int currentBank = programSelector.getCurrent().getBank();
-				const int newBankFromKnob = (int) std::round((numBanks - 1) * params[PROGRAM_PARAM].getValue());
-
-				if (currentBank != newBankFromKnob) {
+				if (delta != 0) {
+					const int newBankFromKnob = (int) std::round((numBanks - 1) * params[PROGRAM_PARAM].getValue());
+					programKnobReferenceState = params[PROGRAM_PARAM].getValue();
 					setAlgorithmViaBank(newBankFromKnob);
 				}
 			}
