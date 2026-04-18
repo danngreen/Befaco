@@ -212,9 +212,9 @@ struct StereoStrip : Module {
 
 	PanningLaw panningLaw = LINEAR_6dB;
 
-	AeEqualizer<float_4> eqLow[4][2];
-	AeEqualizer<float_4> eqMid[4][2];
-	AeEqualizer<float_4> eqHigh[4][2];
+	AeEqualizer<float_4> eqLow[PORT_MAX_CHANNELS / 4][2];
+	AeEqualizer<float_4> eqMid[PORT_MAX_CHANNELS / 4][2];
+	AeEqualizer<float_4> eqHigh[PORT_MAX_CHANNELS / 4][2];
 
 	bool applyHighpass = true;
 	AeFilter<float_4> highpass[4][2];
@@ -274,7 +274,7 @@ struct StereoStrip : Module {
 		const float shelfSampleRate = std::min(0.4f * APP->engine->getSampleRate(), 12000.0f);
 
 		for (int side = 0; side < 2; ++side) {
-			for (int c = 0; c < 16; c += 4) {
+			for (int c = 0; c < PORT_MAX_CHANNELS; c += 4) {
 				highpass[c / 4][side].setCutoff(25.0f, 0.8f, AeFilterType::AeHIGHPASS);				
 				highshelf[c / 4][side].setParams(shelfSampleRate, 0.8f, -5.0f, AeEQType::AeHIGHSHELVE);
 			}
@@ -288,7 +288,7 @@ struct StereoStrip : Module {
 
 		// only calculate coefficients when neccessary
 		if (highGain != lastHighGain || forceUpdate) {
-			for (int c = 0; c < 16; c += 4) {
+			for (int c = 0; c < PORT_MAX_CHANNELS; c += 4) {
 				for (int side = 0; side < 2; ++side) {
 					eqHigh[c / 4][side].setParams(2000.0f, 0.4f, highGain, AeEQType::AeHIGHSHELVE);
 				}
@@ -297,7 +297,7 @@ struct StereoStrip : Module {
 		}
 
 		if (midGain != lastMidGain || forceUpdate) {
-			for (int c = 0; c < 16; c += 4) {
+			for (int c = 0; c < PORT_MAX_CHANNELS; c += 4) {
 				for (int side = 0; side < 2; ++side) {
 					eqMid[c / 4][side].setParams(1200.0f, 0.52f, midGain, AeEQType::AePEAKINGEQ);
 				}
@@ -306,7 +306,7 @@ struct StereoStrip : Module {
 		}
 
 		if (lowGain != lastLowGain || forceUpdate) {
-			for (int c = 0; c < 16; c += 4) {
+			for (int c = 0; c < PORT_MAX_CHANNELS; c += 4) {
 				for (int side = 0; side < 2; ++side) {
 					eqLow[c / 4][side].setParams(125.0f, 0.45f, lowGain, AeEQType::AeLOWSHELVE);
 				}
