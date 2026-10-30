@@ -4,6 +4,10 @@
 #include "OwlSDKIntegration.hpp"
 #include <array>
 #include <atomic>
+#ifdef METAMODULE
+#include "threads/block_job.hh"
+#include <memory>
+#endif
 
 struct IroiVCV : Module {
     enum ParamId {
@@ -129,6 +133,26 @@ struct IroiVCV : Module {
     AudioBuffer *bufferIn = nullptr;
     AudioBuffer *bufferOut = nullptr;
     int bufferIndex = 0;
+
+#ifdef METAMODULE
+    // On MetaModule, processAudio() runs as a background job, one block behind,
+    // so it overlaps with the rest of the patch: while the job processes jobIn into
+    // jobOut, process() fills bufferIn and plays bufferOut. The job owns jobIn, jobOut
+    // and the patch until it's done, so button changes are held until the next block.
+    AudioBuffer *jobIn = nullptr;
+    AudioBuffer *jobOut = nullptr;
+    std::unique_ptr<MetaModule::BlockJob> blockJob;
+
+    struct ButtonChange {
+        PatchButtonId bid;
+        uint16_t value;
+    };
+    std::array<ButtonChange, 16> pendingButtonChanges{};
+    unsigned numPendingButtonChanges = 0;
+
+    // ui->IsMapOn(), as of the last block
+    bool mapOn = false;
+#endif
 
     dsp::BooleanTrigger shiftButtonTrigger;
     dsp::BooleanTrigger randomButtonTrigger;
@@ -338,9 +362,26 @@ struct IroiVCV : Module {
 
         bufferIn = AudioBuffer::create(2, kBlockSize);
         bufferOut = AudioBuffer::create(2, kBlockSize);
+
+#ifdef METAMODULE
+        jobIn = AudioBuffer::create(2, kBlockSize);
+        jobOut = AudioBuffer::create(2, kBlockSize);
+        bufferOut->clear();
+        jobOut->clear();
+        blockJob = std::make_unique<MetaModule::BlockJob>(this, [this] {
+            jobOut->copyFrom(*jobIn);
+            patch->processAudio(*jobOut);
+        });
+#endif
     }
 
     ~IroiVCV() {
+#ifdef METAMODULE
+        // Waits for a job in progress
+        blockJob.reset();
+        AudioBuffer::destroy(jobIn);
+        AudioBuffer::destroy(jobOut);
+#endif
         delete patch;
         AudioBuffer::destroy(bufferIn);
         AudioBuffer::destroy(bufferOut);
@@ -360,6 +401,10 @@ struct IroiVCV : Module {
         float oldSampleRate = patch->getPatchState()->sampleRate;
         // this destroys and recreates the patch, so only do it if the sample rate has actually changed
         if (newSampleRate != oldSampleRate) {
+#ifdef METAMODULE
+            while (blockJob->is_busy()) {
+            }
+#endif
             patch->updateSampleRateBlockSize(APP->engine->getSampleRate(), BLOCKSIZE);
         }
     }
@@ -589,27 +634,44 @@ struct IroiVCV : Module {
 
     void triggerClearFlash() { clearFlashTime = 0.12f; }
 
+    void buttonChanged(PatchButtonId bid, uint16_t value) {
+#ifdef METAMODULE
+        if (numPendingButtonChanges < pendingButtonChanges.size())
+            pendingButtonChanges[numPendingButtonChanges++] = {bid, value};
+#else
+        patch->buttonChanged(bid, value, 0);
+#endif
+    }
+
+#ifdef METAMODULE
+    void applyPendingButtonChanges() {
+        for (auto i = 0u; i < numPendingButtonChanges; i++)
+            patch->buttonChanged(pendingButtonChanges[i].bid, pendingButtonChanges[i].value, 0);
+        numPendingButtonChanges = 0;
+    }
+#endif
+
     void processButtons() {
         auto shiftEvent = shiftButtonTrigger.processEvent(params[SHIFT_PARAM].getValue());
         if (shiftEvent == dsp::BooleanTrigger::Event::TRIGGERED) {
-            patch->buttonChanged(SHIFT_BUTTON, Patch::ON, 0);
+            buttonChanged(SHIFT_BUTTON, Patch::ON);
         } else if (shiftEvent == dsp::BooleanTrigger::Event::UNTRIGGERED) {
-            patch->buttonChanged(SHIFT_BUTTON, Patch::OFF, 0);
+            buttonChanged(SHIFT_BUTTON, Patch::OFF);
         }
 
         auto randomButtonEvent = randomButtonTrigger.processEvent(params[RANDOM_PARAM].getValue());
         if (randomButtonEvent == dsp::BooleanTrigger::Event::TRIGGERED) {
-            patch->buttonChanged(RANDOM_BUTTON, Patch::ON, 0);
+            buttonChanged(RANDOM_BUTTON, Patch::ON);
             pendingRandomizeAction.store(true);
         } else if (randomButtonEvent == dsp::BooleanTrigger::Event::UNTRIGGERED) {
-            patch->buttonChanged(RANDOM_BUTTON, Patch::OFF, 0);
+            buttonChanged(RANDOM_BUTTON, Patch::OFF);
         }
 
         auto mapButtonEvent = mapButtonTrigger.processEvent(params[MAP_PARAM].getValue());
         if (mapButtonEvent == dsp::BooleanTrigger::Event::TRIGGERED) {
-            patch->buttonChanged(MAP_BUTTON, Patch::ON, 0);
+            buttonChanged(MAP_BUTTON, Patch::ON);
         } else if (mapButtonEvent == dsp::BooleanTrigger::Event::UNTRIGGERED) {
-            patch->buttonChanged(MAP_BUTTON, Patch::OFF, 0);
+            buttonChanged(MAP_BUTTON, Patch::OFF);
         }
 
         auto clearButtonEvent = clearButtonTrigger.processEvent(params[CLEAR_PARAM].getValue());
@@ -624,17 +686,17 @@ struct IroiVCV : Module {
 
         auto randomInputEvent = randomInputTrigger.processEvent(inputs[RANDOM_INPUT].getVoltage());
         if (randomInputEvent == dsp::SchmittTrigger::Event::TRIGGERED) {
-            patch->buttonChanged(RANDOM_IN, Patch::ON, 0);
+            buttonChanged(RANDOM_IN, Patch::ON);
             pendingRandomizeAction.store(true);
         } else if (randomInputEvent == dsp::SchmittTrigger::Event::UNTRIGGERED) {
-            patch->buttonChanged(RANDOM_IN, Patch::OFF, 0);
+            buttonChanged(RANDOM_IN, Patch::OFF);
         }
 
         auto syncInputEvent = syncInputTrigger.processEvent(inputs[SYNC_INPUT].getVoltage());
         if (syncInputEvent == dsp::SchmittTrigger::Event::TRIGGERED) {
-            patch->buttonChanged(SYNC_IN, Patch::ON, 0);
+            buttonChanged(SYNC_IN, Patch::ON);
         } else if (syncInputEvent == dsp::SchmittTrigger::Event::UNTRIGGERED) {
-            patch->buttonChanged(SYNC_IN, Patch::OFF, 0);
+            buttonChanged(SYNC_IN, Patch::OFF);
         }
     }
 
@@ -740,7 +802,11 @@ struct IroiVCV : Module {
         const bool shiftActive = params[SHIFT_PARAM].getValue() > 0.5f;
         if (shiftActive) {
             editMode = EDIT_MODE_ALT;
+#ifdef METAMODULE
+        } else if (mapOn) {
+#else
         } else if (ui->IsMapOn()) {
+#endif
             const int mapMode = (int)std::round(params[MAP_MODE_PARAM].getValue());
             switch (mapMode) {
             default:
@@ -753,6 +819,25 @@ struct IroiVCV : Module {
         }
 
         if (bufferIndex == kBlockSize) {
+#ifdef METAMODULE
+            // The engine makes sure the last job has finished by now. It can only still be
+            // busy if modules are being run some other way (e.g. a load test): then skip
+            // this block rather than touch what the job is using
+            if (!blockJob->is_busy()) {
+                // The lights show the block that just finished
+                updateLights(args, patchCtrls, ui);
+                mapOn = ui->IsMapOn();
+
+                applyPendingButtonChanges();
+                updateSlewedParams(args.sampleTime * kBlockSize);
+                updatePatchParameters(patchCtrls, patchCvs, ui);
+
+                std::swap(bufferIn, jobIn);
+                std::swap(bufferOut, jobOut);
+                blockJob->submit(kBlockSize);
+            }
+            bufferIndex = 0;
+#else
             updateSlewedParams(args.sampleTime * kBlockSize);
             updatePatchParameters(patchCtrls, patchCvs, ui);
 
@@ -761,6 +846,7 @@ struct IroiVCV : Module {
             bufferIndex = 0;
 
             updateLights(args, patchCtrls, ui);
+#endif
         }
 
         bufferIn->getSamples(LEFT_CHANNEL)[bufferIndex] = inputs[LEFT_INPUT].getVoltageSum() / 5.f;
