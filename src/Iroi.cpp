@@ -9,6 +9,18 @@
 #include <memory>
 #endif
 
+// 1: the audio is processed one sample per process() call, and only the control
+//    work (parameters, modulation, UI) runs once per block. The load is nearly the
+//    same on every frame, and there's no block of latency.
+// 0: a whole block is processed at once, every kBlockSize calls to process().
+#ifndef IROI_PER_FRAME_AUDIO
+#ifdef METAMODULE
+#define IROI_PER_FRAME_AUDIO 1
+#else
+#define IROI_PER_FRAME_AUDIO 0
+#endif
+#endif
+
 struct IroiVCV : Module {
     enum ParamId {
         FILTER_CUTOFF_PARAM,
@@ -406,6 +418,10 @@ struct IroiVCV : Module {
             }
 #endif
             patch->updateSampleRateBlockSize(APP->engine->getSampleRate(), BLOCKSIZE);
+#if IROI_PER_FRAME_AUDIO
+            // The new patch hasn't begun a block
+            bufferIndex = 0;
+#endif
         }
     }
 
@@ -818,6 +834,33 @@ struct IroiVCV : Module {
             editMode = EDIT_MODE_NORMAL;
         }
 
+#if IROI_PER_FRAME_AUDIO
+        // The control work runs on the first frame of each block
+        if (bufferIndex == 0) {
+            updateSlewedParams(args.sampleTime * kBlockSize);
+            updatePatchParameters(patchCtrls, patchCvs, ui);
+            patch->beginBlock();
+        }
+
+        float left = inputs[LEFT_INPUT].getVoltageSum() / 5.f;
+        float right = inputs[RIGHT_INPUT].isConnected() ? inputs[RIGHT_INPUT].getVoltageSum() / 5.f : left;
+
+        patch->processSample(left, right);
+
+        if (outputs[RIGHT_OUTPUT].isConnected()) {
+            outputs[LEFT_OUTPUT].setVoltage(5.f * left);
+            outputs[RIGHT_OUTPUT].setVoltage(5.f * right);
+        } else {
+            outputs[LEFT_OUTPUT].setVoltage(2.5f * (left + right));
+        }
+
+        // The lights are updated on the last frame of each block
+        if (++bufferIndex == kBlockSize) {
+            patch->endBlock();
+            updateLights(args, patchCtrls, ui);
+            bufferIndex = 0;
+        }
+#else
         if (bufferIndex == kBlockSize) {
 #ifdef METAMODULE
             // The engine makes sure the last job has finished by now. It can only still be
@@ -866,6 +909,7 @@ struct IroiVCV : Module {
         }
 
         bufferIndex++;
+#endif
     }
 
     json_t *dataToJson() override {
