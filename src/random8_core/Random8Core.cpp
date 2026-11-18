@@ -66,6 +66,14 @@ R8::Channel::ChannelState Random8Core::getChannelState(int channel) const {
     return impl_->channels[channel].getState();
 }
 
+int Random8Core::getChannelStyle(int channel) const {
+    if (channel < 0 || channel >= R8::NUM_CHANNELS) {
+        return 0;
+    }
+
+    return static_cast<int>(impl_->channels[channel].data.coreInfo.style);
+}
+
 void Random8Core::setChannelState(int channel, const R8::Channel::ChannelState &state) {
     if (channel < 0 || channel >= R8::NUM_CHANNELS) {
         return;

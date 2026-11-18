@@ -28,6 +28,7 @@ class Random8Core {
     void reset();
     void resetChannel(int channel);
     R8::Channel::ChannelState getChannelState(int channel) const;
+    int getChannelStyle(int channel) const;
     void setChannelState(int channel, const R8::Channel::ChannelState &state);
     void setChannelParams(int channel, const Random8ChannelParams &params);
     void onTrigger(int channel);

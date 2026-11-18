@@ -288,9 +288,11 @@ struct Random8 : Module {
             const Random8ChannelParams channelParams = readChannelParams(channel);
             if (channelParamsDirty[channel] || channelParamsChanged(channelParams, lastChannelParams[channel])) {
                 Random8ChannelParams appliedParams = channelParams;
-                const bool styleChanged = channelParams.style != lastChannelParams[channel].style;
+                // Change style if it differs from the style the core is running:
+                const int coreStyle = core.getChannelStyle(channel);
+                const bool styleChanged = channelParams.style != coreStyle;
                 if (styleChanged && styleChangeApplied) {
-                    appliedParams.style = lastChannelParams[channel].style;
+                    appliedParams.style = coreStyle;
                 } else if (styleChanged) {
                     styleChangeApplied = true;
                 }
